@@ -54,6 +54,10 @@
         <button id="pause-btn">Pause</button>
         <button id="bookmark-btn">Bookmark</button>
       </div>
+      <div id="chunk-loading" class="chunk-loading hidden" aria-live="polite">
+        <span class="spinner" aria-hidden="true"></span>
+        <span>Carregando proximo chunk...</span>
+      </div>
       <audio id="audio-player" controls preload="metadata"></audio>
       <small id="player-status"></small>
     </section>

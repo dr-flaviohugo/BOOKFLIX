@@ -7,6 +7,9 @@ const state = {
   chapterManifest: null,
   currentChunk: 0,
   sessionId: createSessionId(),
+  chunkCache: new Map(),
+  chunkFetches: new Map(),
+  chapterToken: 0,
 };
 
 const uploadInput = document.getElementById("epub-file");
@@ -24,6 +27,87 @@ const bookmarkBtn = document.getElementById("bookmark-btn");
 const playerStatus = document.getElementById("player-status");
 const audio = document.getElementById("audio-player");
 const bookmarkList = document.getElementById("bookmark-list");
+const chunkLoading = document.getElementById("chunk-loading");
+
+function setChunkLoading(visible) {
+  chunkLoading.classList.toggle("hidden", !visible);
+}
+
+function clearChunkCache() {
+  state.chunkFetches.clear();
+  state.chunkCache.forEach((entry) => {
+    if (entry && entry.objectUrl) {
+      URL.revokeObjectURL(entry.objectUrl);
+    }
+  });
+  state.chunkCache.clear();
+}
+
+async function fetchChunkToCache(chapterIndex, chunkIndex, chapterToken) {
+  if (!state.chapterManifest || chapterToken !== state.chapterToken) {
+    return null;
+  }
+
+  if (state.chunkCache.has(chunkIndex)) {
+    return state.chunkCache.get(chunkIndex);
+  }
+
+  if (state.chunkFetches.has(chunkIndex)) {
+    return state.chunkFetches.get(chunkIndex);
+  }
+
+  const chunk = state.chapterManifest.chunks[chunkIndex];
+  if (!chunk) {
+    return null;
+  }
+
+  const fetchPromise = (async () => {
+    const src = `${window.BookflixApi.API_BASE}${chunk.stream_url}`;
+    const response = await fetch(src);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const audioBlob = await response.blob();
+    if (chapterToken !== state.chapterToken) {
+      return null;
+    }
+
+    const objectUrl = URL.createObjectURL(audioBlob);
+    const cached = { objectUrl };
+    state.chunkCache.set(chunkIndex, cached);
+    return cached;
+  })();
+
+  state.chunkFetches.set(chunkIndex, fetchPromise);
+
+  try {
+    return await fetchPromise;
+  } finally {
+    state.chunkFetches.delete(chunkIndex);
+  }
+}
+
+function prefetchChunk(chapterIndex, chunkIndex, chapterToken) {
+  if (!state.chapterManifest || chunkIndex < 0 || chunkIndex >= state.chapterManifest.total_chunks) {
+    return;
+  }
+  fetchChunkToCache(chapterIndex, chunkIndex, chapterToken).catch(() => null);
+}
+
+async function resolveChunkSource(chapterIndex, chunkIndex) {
+  const chapterToken = state.chapterToken;
+
+  if (state.chunkCache.has(chunkIndex)) {
+    const cached = state.chunkCache.get(chunkIndex);
+    return { src: cached.objectUrl, fromCache: true };
+  }
+
+  const cached = await fetchChunkToCache(chapterIndex, chunkIndex, chapterToken);
+  if (!cached) {
+    throw new Error("Capitulo foi alterado durante o carregamento do chunk");
+  }
+  return { src: cached.objectUrl, fromCache: false };
+}
 
 function setStatus(target, text) {
   target.textContent = text;
@@ -83,12 +167,20 @@ async function loadChapterManifest() {
     return;
   }
 
+  clearChunkCache();
+  state.chapterToken += 1;
+  setChunkLoading(false);
+
   const chapterIndex = Number(chapterSelect.value || 0);
   state.chapterManifest = await apiRequest(
     `/api/v1/audio/${state.selectedBook.id}/chapter/${chapterIndex}/manifest`
   );
   state.currentChunk = 0;
   setStatus(playerStatus, `Capítulo ${chapterIndex + 1} carregado com ${state.chapterManifest.total_chunks} chunks`);
+
+  const chapterToken = state.chapterToken;
+  prefetchChunk(chapterIndex, 0, chapterToken);
+  prefetchChunk(chapterIndex, 1, chapterToken);
 }
 
 async function playCurrentChunk() {
@@ -102,13 +194,22 @@ async function playCurrentChunk() {
   if (!chunk) {
     setStatus(playerStatus, "Fim do capítulo");
     await saveProgress(chapterIndex, audio.currentTime || 0);
+    setChunkLoading(false);
     return;
   }
 
-  const src = `${window.BookflixApi.API_BASE}${chunk.stream_url}`;
-  audio.src = src;
+  const wasCached = state.chunkCache.has(state.currentChunk);
+  setChunkLoading(!wasCached);
+  const source = await resolveChunkSource(chapterIndex, state.currentChunk);
+  audio.src = source.src;
   audio.playbackRate = Number(speedSelect.value);
   await audio.play();
+  setChunkLoading(false);
+
+  const chapterToken = state.chapterToken;
+  prefetchChunk(chapterIndex, state.currentChunk + 1, chapterToken);
+  prefetchChunk(chapterIndex, state.currentChunk + 2, chapterToken);
+
   setStatus(playerStatus, `Reproduzindo chunk ${state.currentChunk + 1}/${state.chapterManifest.total_chunks}`);
 }
 
@@ -225,6 +326,9 @@ uploadBtn.addEventListener("click", async () => {
 });
 
 chapterSelect.addEventListener("change", async () => {
+  audio.pause();
+  audio.removeAttribute("src");
+  audio.load();
   await loadChapterManifest();
   await saveProgress(Number(chapterSelect.value || 0), 0);
 });
@@ -252,6 +356,7 @@ playBtn.addEventListener("click", async () => {
 
 pauseBtn.addEventListener("click", async () => {
   audio.pause();
+  setChunkLoading(false);
   await saveProgress(Number(chapterSelect.value || 0), audio.currentTime || 0);
 });
 

@@ -1,4 +1,4 @@
-const APP_CACHE = "bookflix-app-v1";
+const APP_CACHE = "bookflix-app-v2";
 const APP_ASSETS = [
   "./",
   "./index.html",
