@@ -136,10 +136,46 @@ function renderBooks() {
     item.className = "book-item";
     item.innerHTML = `<strong>${book.title}</strong><br><small>${book.author || "Autor desconhecido"}</small>`;
 
-    const btn = document.createElement("button");
-    btn.textContent = "Abrir";
-    btn.addEventListener("click", () => openBook(book.id));
-    item.appendChild(btn);
+    const actions = document.createElement("div");
+    actions.className = "book-actions";
+
+    const openButton = document.createElement("button");
+    openButton.textContent = "Abrir";
+    openButton.addEventListener("click", () => openBook(book.id));
+
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.className = "danger-btn";
+    removeButton.textContent = "Remover";
+    removeButton.addEventListener("click", async () => {
+      const shouldDelete = window.confirm(`Remover \"${book.title}\" da biblioteca?`);
+      if (!shouldDelete) {
+        return;
+      }
+
+      try {
+        await apiRequest(`/api/v1/books/${book.id}`, { method: "DELETE" });
+        if (state.selectedBook?.id === book.id) {
+          state.selectedBook = null;
+          state.chapterManifest = null;
+          state.currentChunk = 0;
+          chapterSelect.innerHTML = "";
+          bookmarkList.innerHTML = "";
+          nowPlaying.textContent = "Nenhum livro selecionado";
+          audio.pause();
+          audio.removeAttribute("src");
+          audio.load();
+        }
+        setStatus(uploadStatus, `Livro removido: ${book.title}`);
+        await loadBooks();
+      } catch (err) {
+        setStatus(uploadStatus, `Falha ao remover: ${err.message}`);
+      }
+    });
+
+    actions.appendChild(openButton);
+    actions.appendChild(removeButton);
+    item.appendChild(actions);
 
     bookList.appendChild(item);
   });

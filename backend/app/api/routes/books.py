@@ -1,4 +1,5 @@
 from pathlib import Path
+import hashlib
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy import select
@@ -13,6 +14,18 @@ from app.services.epub_service import parse_epub
 router = APIRouter(prefix="/api/v1/books", tags=["books"])
 
 
+def _sha256_bytes(content: bytes) -> str:
+    return hashlib.sha256(content).hexdigest()
+
+
+def _sha256_file(path: Path) -> str:
+    hasher = hashlib.sha256()
+    with path.open("rb") as file_handle:
+        for chunk in iter(lambda: file_handle.read(8192), b""):
+            hasher.update(chunk)
+    return hasher.hexdigest()
+
+
 @router.post("/upload", response_model=BookCreateResponse)
 async def upload_epub(file: UploadFile = File(...), db: Session = Depends(get_db)) -> BookCreateResponse:
     if not file.filename or not file.filename.lower().endswith(".epub"):
@@ -25,6 +38,15 @@ async def upload_epub(file: UploadFile = File(...), db: Session = Depends(get_db
     content = await file.read()
     if len(content) > 50 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="Arquivo excede limite de 50MB")
+
+    if file_path.exists():
+        raise HTTPException(status_code=409, detail="Este arquivo EPUB ja existe na biblioteca")
+
+    upload_hash = _sha256_bytes(content)
+    for existing_file in storage_dir.glob("*.epub"):
+        if existing_file.is_file() and _sha256_file(existing_file) == upload_hash:
+            raise HTTPException(status_code=409, detail="Este EPUB ja foi enviado anteriormente")
+
     file_path.write_bytes(content)
 
     try:
@@ -92,3 +114,19 @@ def list_books(db: Session = Depends(get_db)) -> list[BookCreateResponse]:
         )
         for book in books
     ]
+
+
+@router.delete("/{book_id}")
+def delete_book(book_id: str, db: Session = Depends(get_db)) -> dict[str, str]:
+    book = db.get(Book, book_id)
+    if not book:
+        raise HTTPException(status_code=404, detail="Livro nao encontrado")
+
+    epub_path = Path(book.original_file)
+    db.delete(book)
+    db.commit()
+
+    if epub_path.exists() and epub_path.is_file():
+        epub_path.unlink()
+
+    return {"detail": "Livro removido com sucesso"}
