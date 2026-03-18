@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0b1020" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="stylesheet" href="styles.css" />
+  <title>BOOKFLIX</title>
+</head>
+<body>
+  <header class="hero">
+    <h1>BOOKFLIX</h1>
+    <p>Streaming inteligente de audiobooks e webnovels</p>
+  </header>
+
+  <main class="layout">
+    <section class="panel" id="upload-panel">
+      <h2>Importar EPUB</h2>
+      <input id="epub-file" type="file" accept=".epub" />
+      <button id="upload-btn">Enviar</button>
+      <small id="upload-status"></small>
+    </section>
+
+    <section class="panel" id="library-panel">
+      <h2>Biblioteca</h2>
+      <ul id="book-list" class="book-list"></ul>
+    </section>
+
+    <section class="panel" id="player-panel">
+      <h2>Player</h2>
+      <div id="now-playing" class="now-playing">Nenhum livro selecionado</div>
+      <div class="controls-row">
+        <label>Capítulo</label>
+        <select id="chapter-select"></select>
+      </div>
+      <div class="controls-row">
+        <label>Velocidade</label>
+        <select id="speed-select">
+          <option value="0.75">0.75x</option>
+          <option value="1" selected>1x</option>
+          <option value="1.25">1.25x</option>
+          <option value="1.5">1.5x</option>
+          <option value="2">2x</option>
+        </select>
+      </div>
+      <div class="controls-row">
+        <label>Voz TTS</label>
+        <input id="voice-input" type="text" placeholder="pt-BR-FranciscaNeural" />
+        <button id="voice-save">Aplicar</button>
+      </div>
+      <div class="buttons">
+        <button id="play-btn">Play</button>
+        <button id="pause-btn">Pause</button>
+        <button id="bookmark-btn">Bookmark</button>
+      </div>
+      <audio id="audio-player" controls preload="metadata"></audio>
+      <small id="player-status"></small>
+    </section>
+
+    <section class="panel" id="bookmark-panel">
+      <h2>Bookmarks</h2>
+      <ul id="bookmark-list" class="bookmark-list"></ul>
+    </section>
+  </main>
+
+  <script src="api.js"></script>
+  <script src="player.js"></script>
+</body>
+</html>
